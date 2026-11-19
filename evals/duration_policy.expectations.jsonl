@@ -1,0 +1,1 @@
+{"case_id": "duration01", "reference_status": "assistant_defined_not_human_gold", "expected": {"decisions": ["PROPOSE"], "operations": [{"kind": "CREATE", "start_at": "2026-11-12T15:20:00+08:00", "end_at": "2026-11-12T16:05:00+08:00"}], "must_not_change": []}, "notes": "45 minutes is trusted upstream configuration, not a quoted message duration; policy annotation is required."}

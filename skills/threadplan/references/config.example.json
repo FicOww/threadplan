@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "context": {
+    "user_id": "YOUR_REAL_MESSAGE_SENDER_ID",
+    "default_timezone": "YOUR_IANA_TIMEZONE",
+    "connection_ref": "YOUR_CONNECTION_REFERENCE",
+    "scope_ref": "YOUR_CALENDAR_ID",
+    "namespace": "threadplan-skill"
+  },
+  "calendar_id": "YOUR_CALENDAR_ID",
+  "state_directory": "threadplan-state",
+  "execution_policy": {
+    "mode": "read_only"
+  }
+}

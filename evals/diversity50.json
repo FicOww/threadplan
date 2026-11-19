@@ -1,0 +1,61 @@
+{
+  "version": "diversity50-v1",
+  "inputs": "diversity50.inputs.jsonl",
+  "fixtures": "diversity50.fixtures.jsonl",
+  "expectations": "diversity50.expectations.jsonl",
+  "source_split": "development",
+  "reference_status": "assistant_defined_not_human_gold",
+  "case_count": 50,
+  "reused_cases": 22,
+  "new_authored_cases": 28,
+  "components": [
+    {
+      "part": "inputs",
+      "path": "candidate_v03.inputs.jsonl",
+      "sha256": "54b7cbfcdde897d729c1654518d3f070805da1c6bedb6912e4da8cc822eae10c"
+    },
+    {
+      "part": "fixtures",
+      "path": "candidate_v03.fixtures.jsonl",
+      "sha256": "fa50fecff30a8179468e32db418b9045a10ad5e359b49dd3d96b5796e36013da"
+    },
+    {
+      "part": "expectations",
+      "path": "target_v1.expectations.jsonl",
+      "sha256": "9cca9048afdbe0e76e6ce40801743ecf393f67f728c5755e89e3dfa1086b6d20"
+    },
+    {
+      "part": "inputs",
+      "path": "target_gaps.inputs.jsonl",
+      "sha256": "8b0f2992dcbb5793b5551d80cc299cf4510de73c20312d216203eb0aa119f293"
+    },
+    {
+      "part": "fixtures",
+      "path": "target_gaps.fixtures.jsonl",
+      "sha256": "62846ee398aa38f16f6275def38f7fc415117a8d80270b46855ae0d278196996"
+    },
+    {
+      "part": "expectations",
+      "path": "target_gaps.expectations.jsonl",
+      "sha256": "b5e0aa0cfa5129aeeceb70ccf5812b3da852b72b9274a313a8c1586859012ca8"
+    },
+    {
+      "part": "inputs",
+      "path": "duration_policy.inputs.jsonl",
+      "sha256": "6ff115a2dbb3d99d052851c5c80d1e090b3b167ab668788478ee4844ee082710"
+    },
+    {
+      "part": "fixtures",
+      "path": "duration_policy.fixtures.jsonl",
+      "sha256": "40debdc825b2dbfbce3ce61b1541f24f44b6989e54057bd4f752b7cde6fb6871"
+    },
+    {
+      "part": "expectations",
+      "path": "duration_policy.expectations.jsonl",
+      "sha256": "ad5b5fa7e0eef1931ca771ab1d734a3e505827b29064e4c45debb9ecf56b9303"
+    }
+  ],
+  "semantic_case_count": 48,
+  "technical_contract_case_count": 2,
+  "description": "Diverse constructed development regression; not independent blind evaluation or real user data."
+}

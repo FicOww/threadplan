@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ThreadPlan</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/calendar.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" data-nav="library"><span class="brand-mark" aria-hidden="true"></span>ThreadPlan</a>
+      <nav aria-label="工作台">
+        <a href="/" data-nav="library" aria-current="page">场景库</a>
+        <a href="/?view=try" data-nav="try" id="sandbox-nav" hidden>自由试用</a>
+        <a href="/?view=history" data-nav="history">最近任务</a>
+      </nav>
+      <span class="mode">模拟试用</span>
+    </div>
+  </header>
+  <main id="main" tabindex="-1" aria-busy="true">
+    <p class="quiet">正在载入场景…</p>
+  </main>
+  <div id="feedback" role="status" aria-live="polite"></div>
+  <dialog id="confirmation" aria-labelledby="confirmation-title">
+    <h2 id="confirmation-title">确认日程变更</h2>
+    <p id="confirmation-detail"></p>
+    <div class="dialog-actions">
+      <form method="dialog"><button class="secondary">返回</button></form>
+      <button id="confirmation-submit" class="primary"></button>
+    </div>
+  </dialog>
+  <noscript>试用工作台需要启用 JavaScript。</noscript>
+</body>
+</html>

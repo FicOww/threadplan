@@ -1,0 +1,11 @@
+{
+  "version": "target-v1",
+  "inputs": "candidate_v03.inputs.jsonl",
+  "fixtures": "candidate_v03.fixtures.jsonl",
+  "expectations": "target_v1.expectations.jsonl",
+  "source_split": "development",
+  "reference_status": "assistant_defined_not_human_gold",
+  "behavior_changes": {
+    "accept05": "Unconfigured CREATE duration now uses the product default of 30 minutes, rather than WAIT."
+  }
+}
