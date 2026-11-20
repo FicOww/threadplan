@@ -12,4 +12,4 @@ sys.path.insert(0, str(RUNTIME))
 from threadplan_host.cli import main
 
 if __name__ == "__main__":
-    raise SystemExit(main(host_only=True))
+    raise SystemExit(main(managed_skill=True))

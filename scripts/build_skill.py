@@ -8,9 +8,9 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills" / "threadplan"
-VERSION = "1.1.0"
+VERSION = "1.3.0"
 SKILL_FILES = ("SKILL.md", "scripts/threadplan_tool.py", "references/tools.md",
-               "references/setup.md", "references/config.example.json")
+               "references/setup.md", "references/direct.md")
 RUNTIME_FILES = (
     "threadplan/__init__.py", "threadplan/contracts.py", "threadplan/codec.py",
     "threadplan/intake.py", "threadplan/protocol.py", "threadplan/operations.py", "threadplan/timeops.py",
@@ -19,7 +19,8 @@ RUNTIME_FILES = (
     "threadplan_host/feishu.py", "threadplan_host/limits.py",
     "threadplan_host/planning_execution.py", "threadplan_host/planning_feishu.py",
     "threadplan_host/planning_reads.py", "threadplan_host/planning_store.py",
-    "threadplan_host/planning_validation.py")
+    "threadplan_host/planning_validation.py", "threadplan_host/skill_setup.py",
+    "threadplan_host/skill_direct.py")
 
 
 def build(output):
@@ -41,7 +42,7 @@ def build(output):
     payload["scripts/runtime/threadplan/decision_policy.md"] = policy.read_bytes()
     payload["references/decision-policy.md"] = policy.read_bytes()
     manifest = {"name": "threadplan", "version": VERSION, "python": ">=3.11",
-        "scope": "explicit user-authorized Feishu calendar; timed non-recurring events",
+        "scope": "one private ThreadPlan Feishu calendar; timed non-recurring events",
         "external_runtime": ["existing native lark-cli", "user authentication", "IANA timezone data"],
         "model_service_in_bundle": False,
         "files": {name: hashlib.sha256(data).hexdigest() for name, data in sorted(payload.items())}}

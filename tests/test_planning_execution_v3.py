@@ -292,16 +292,27 @@ class PlanningExecutionV3Checks(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.bindings(created["conversation"])[0]["status"], "cancelled")
 
     async def test_acknowledged_write_read_failure_survives_restart_and_recovery_only_reads(self):
-        self.seed();row = await self.analyze();command = self.prepare(row)
-        with patch.object(self.backend, "_verify_receipt", side_effect=FeishuError("injected receiver read failure")):
-            with self.assertRaises(FeishuError):
+        self.seed()
+        row = await self.analyze()
+        command = self.prepare(row)
+        update_event = self.calendar.update_event
+
+        def write_then_lose_readback(*args, **kwargs):
+            response = update_event(*args, **kwargs)
+            self.calendar.fail_readback = True
+            return response
+
+        with patch.object(self.calendar, "update_event", side_effect=write_then_lose_readback):
+            with self.assertRaisesRegex(FeishuError, "readback unavailable"):
                 self.executor.execute(command["id"], approved=True)
-        self.assertEqual(self.executor.command(command["id"])["state"],"VERIFY_PENDING")
+        self.assertEqual(self.executor.command(command["id"])["state"], "VERIFY_PENDING")
+        self.calendar.fail_readback = False
         count = len(self.writes())
-        reopened = PlanningExecutor(PlanningStore(self.store.path,clock=self.clock),context=self.context,
-                                    backend=FeishuHost(self.calendar,self.backend.path))
-        self.assertEqual(reopened.recover(command["id"],approved=True)["state"],"SUCCEEDED")
-        self.assertEqual(len(self.writes()),count)
+        reopened = PlanningExecutor(PlanningStore(self.store.path, clock=self.clock), context=self.context,
+                                    backend=FeishuHost(self.calendar, self.backend.path))
+        self.assertEqual(reopened.recover(command["id"], approved=True)["state"], "SUCCEEDED")
+        self.assertTrue(reopened.execute(command["id"], approved=True)["already_applied"])
+        self.assertEqual(len(self.writes()), count)
 
     async def test_backend_receipt_is_authority_after_sync_crash_and_legacy_mirror(self):
         self.seed(); row = await self.analyze(); command = self.prepare(row)

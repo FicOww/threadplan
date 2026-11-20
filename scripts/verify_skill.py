@@ -19,7 +19,6 @@ sys.path.insert(0, str(ROOT))
 from threadplan import Proposal
 from scripts.feishu_test_support import DEFAULT_CONNECTION, open_test_host, check_test_calendar
 from threadplan.adapters.feishu import FeishuCalendar, TEST_PREFIX
-from scripts.build_skill import VERSION
 
 
 def run(archive):
@@ -29,6 +28,8 @@ def run(archive):
     directory = ROOT / "runs" / ("skill-real-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
     directory.mkdir(parents=True)
     with zipfile.ZipFile(archive) as bundle:
+        if json.loads(bundle.read("threadplan/manifest.json"))["version"] != "1.1.0":
+            raise ValueError("legacy_test_harness_requires_skill_1_1_0")
         bundle.extractall(directory / "installed")
     tool = directory / "installed" / "threadplan" / "scripts" / "threadplan_tool.py"
     connection = json.loads(DEFAULT_CONNECTION.read_text(encoding="utf-8"))
@@ -155,9 +156,9 @@ def run(archive):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", action="store_true")
-    parser.add_argument("--archive", type=Path, default=ROOT / "dist" / ("threadplan-" + VERSION + ".zip"))
+    parser.add_argument("--archive", type=Path, default=ROOT / "dist" / "threadplan-1.1.0.zip")
     args = parser.parse_args()
     if args.run:
         raise SystemExit(run(args.archive))
-    print("Plan only: installed Skill CLI, one private ThreadPlan Test event; CREATE/UPDATE/CANCEL, readback, "
+    print("Legacy 1.1.0 plan only: one private ThreadPlan Test event; CREATE/UPDATE/CANCEL, readback, "
           "same-ID and repeat-receipt checks. Constructed operations, zero model calls, no invitations or publication.")

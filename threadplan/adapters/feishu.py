@@ -58,11 +58,12 @@ def event_description(raw: dict) -> str:
     return value
 
 
-def check_event_scope(raw: dict) -> None:
+def check_event_scope(raw: dict, *, allow_reminders=False) -> None:
     """Supported write capabilities, independent of title, owner or calendar name."""
     if (raw.get("attendees") or raw.get("has_more_attendee") or raw.get("recurrence")
             or raw.get("recurring_event_id") or raw.get("is_exception")
-            or raw.get("reminders") or (raw.get("vchat") or {}).get("vc_type") not in {None, "no_meeting"}
+            or (raw.get("reminders") and not allow_reminders)
+            or (raw.get("vchat") or {}).get("vc_type") not in {None, "no_meeting"}
             or any((raw.get(key) or {}).get("date") for key in ("start_time", "end_time"))):
         raise FeishuError("Attendees, recurrence, reminders, all-day and meeting operations are unsupported")
 
@@ -148,11 +149,22 @@ def discover_cli() -> str:
 class LarkCLI:
     """JSON body travels on stdin; argv never passes through cmd.exe or a shell."""
 
-    def __init__(self, executable: str | None = None, *, timeout: float = 60):
-        self.executable = executable or discover_cli()
-        if Path(self.executable).suffix.lower() in {".cmd", ".bat", ".ps1"}:
+    def __init__(self, executable: str | None = None, *, timeout: float = 60, profile: str | None = None):
+        if executable and Path(executable).suffix.lower() in {".cmd", ".bat", ".ps1"}:
             raise FeishuError("Pass the native lark-cli executable, not a shell wrapper")
+        self._executable = executable
+        self.profile = profile
         self.timeout = timeout
+
+    @property
+    def executable(self):
+        if self._executable is None:
+            self._executable = discover_cli()
+        return self._executable
+
+    def command(self, *arguments):
+        profile = ["--profile", self.profile] if self.profile is not None else []
+        return [self.executable, *profile, *arguments]
 
     def invoke(self, resource: str, method: str, *, params: dict | None = None,
                data: dict | None = None, approved: bool = False) -> dict:
@@ -162,7 +174,7 @@ class LarkCLI:
                    ("events", "patch"), ("events", "delete"), ("events", "instance_view")}
         if (resource, method) not in allowed:
             raise FeishuError("Unsupported calendar operation")
-        argv = [self.executable, "calendar", resource, method, "--as", "user", "--format", "json"]
+        argv = self.command("calendar", resource, method, "--as", "user", "--format", "json")
         for key, value in (params or {}).items():
             if key not in {"calendar_id", "event_id", "idempotency_key", "need_notification", "need_attendee", "start_time", "end_time"}:
                 raise FeishuError(f"Unsupported parameter: {key}")
@@ -221,18 +233,21 @@ def _time(value: str) -> dict:
     return {"timestamp": str(int(timestamp)), "timezone": "UTC"}
 
 
-def _proposal(proposal: Proposal, operation: str, approval_key: str) -> dict:
+def _proposal(proposal: Proposal, operation: str, approval_key: str, *, direct=False) -> dict:
     _text(approval_key, "approval_key")
     if not isinstance(proposal, Proposal) or proposal.operation != operation:
         raise FeishuError(f"Expected {operation} Proposal")
     expected = "cancelled" if operation == "CANCEL" else "confirmed"
     if proposal.commitment_state != expected or proposal.unresolved_fields:
         raise FeishuError("Proposal is not ready for host approval")
-    if not proposal.evidence_message_ids:
+    if not direct and not proposal.evidence_message_ids:
         raise FeishuError("Proposal requires message evidence")
     if not isinstance(proposal.changes, dict):
         raise FeishuError("Proposal changes must be an object")
-    if set(proposal.changes) - {"title", "start_at", "end_at", "location", "description", "participants"}:
+    fields = {"title", "start_at", "end_at", "location", "description", "participants"}
+    if direct:
+        fields.update(("reminder_minutes", "location_address"))
+    if set(proposal.changes) - fields:
         raise FeishuError("Unsupported proposal fields")
     changes = {key: value for key, value in proposal.changes.items() if value is not None}
     if changes.get("participants"):
@@ -249,6 +264,23 @@ def _proposal(proposal: Proposal, operation: str, approval_key: str) -> dict:
     return changes
 
 
+def reminder_minutes(raw):
+    reminders = raw.get("reminders")
+    if reminders is None:
+        return []
+    if type(reminders) is not list or any(type(item) is not dict or type(item.get("minutes")) is not int
+                                         for item in reminders):
+        raise FeishuError("Provider returned invalid personal reminders")
+    return sorted(item["minutes"] for item in reminders)
+
+
+def _extra_event_fields(body, changes):
+    if "location_address" in changes:
+        body["location"]["address"] = changes["location_address"]
+    if "reminder_minutes" in changes:
+        body["reminders"] = [{"minutes": value} for value in changes["reminder_minutes"]]
+
+
 def _pair(start: dict, end: dict) -> None:
     try:
         if int(end["timestamp"]) <= int(start["timestamp"]):
@@ -262,6 +294,8 @@ def _title(value: str) -> str:
 
 
 class FeishuCalendar:
+    direct_entry = False
+
     def __init__(self, calendar_id: str, *, cli: LarkCLI | None = None,
                  managed_event_ids: set[str] | None = None):
         self.calendar_id = _text(calendar_id, "calendar_id")
@@ -319,7 +353,7 @@ class FeishuCalendar:
     def _managed(self, event: dict) -> None:
         if event.get("event_id") not in self.managed_event_ids | self.authorized_event_ids:
             raise FeishuError("Event is not in the trusted execution ledger")
-        check_event_scope(event)
+        check_event_scope(event, allow_reminders=self.direct_entry)
 
     def prepare_write(self, proposal, baseline, approval_key, *, approved=False, authorize_target=None):
         """Fresh checks and encoding only; return a send callable.
@@ -349,7 +383,7 @@ class FeishuCalendar:
 
     def _prepare_create(self, proposal: Proposal, approval_key: str, *, approved: bool = False):
         _approved(approved)
-        changes = _proposal(proposal, "CREATE", approval_key)
+        changes = _proposal(proposal, "CREATE", approval_key, direct=self.direct_entry)
         body = {"summary": _title(changes.get("title")),
                 "start_time": _time(changes.get("start_at")), "end_time": _time(changes.get("end_at")),
                 "description": changes.get("description", ""),
@@ -358,6 +392,7 @@ class FeishuCalendar:
         _pair(body["start_time"], body["end_time"])
         if "location" in changes:
             body["location"] = {"name": _text(changes["location"], "location")}
+        _extra_event_fields(body, changes)
         self.get_calendar(approved=True, writable=True)
         def send():
             response = self.cli.invoke("events", "create", params={"calendar_id": self.calendar_id,
@@ -378,7 +413,7 @@ class FeishuCalendar:
     def _prepare_update(self, proposal: Proposal, baseline_event: dict, approval_key: str,
                         *, approved: bool = False, authorize_target=None):
         _approved(approved)
-        changes = _proposal(proposal, "UPDATE", approval_key)
+        changes = _proposal(proposal, "UPDATE", approval_key, direct=self.direct_entry)
         if not isinstance(baseline_event, dict) or baseline_event.get("event_id") != proposal.target_event_id:
             raise FeishuError("UPDATE requires the exact target baseline event")
         current = self.get_event(proposal.target_event_id, approved=True, writable=True)
@@ -391,6 +426,7 @@ class FeishuCalendar:
             body["summary"] = (TEST_PREFIX + _title(changes["title"]) if is_legacy_test_event(current) else _title(changes["title"]))
         if "location" in changes:
             body["location"] = {"name": _text(changes["location"], "location")}
+        _extra_event_fields(body, changes)
         if "description" in changes:
             body["description"] = (_managed_description(changes["description"])
                 if is_legacy_test_event(current) else _text(changes["description"], "description"))

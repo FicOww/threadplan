@@ -36,15 +36,26 @@ def external_state(file, value):
     return directory
 
 
-def configuration(path):
+def configuration(path, *, managed_skill=False):
     if not path:
         raise ValueError("configuration_required_set_THREADPLAN_CONFIG_or_config")
     file = Path(path).expanduser().resolve()
     data = load_json(str(file))
-    if type(data) is not dict or set(data) != {
-            "version", "context", "calendar_id", "state_directory", "execution_policy"} or data["version"] != "1":
+    fields = {"version", "calendar_id", "state_directory", "execution_policy"}
+    if type(data) is not dict or data.get("version") not in (("2", "3") if managed_skill else ("1",)):
         raise ValueError("invalid_configuration")
-    context = UpstreamContext(**data["context"])
+    detached = data["version"] == "3"
+    fields.update({"timezone", "connection_ref"} if detached else {"context"})
+    if managed_skill:
+        fields.add("feishu_identity")
+    if set(data) != fields:
+        raise ValueError("invalid_configuration")
+    if detached:
+        from .skill_setup import validate_timezone
+        validate_timezone(data["timezone"])
+        if not isinstance(data["connection_ref"], str) or not data["connection_ref"].strip():
+            raise ValueError("invalid_skill_binding")
+    context = None if detached else UpstreamContext(**data["context"])
     if not isinstance(data["calendar_id"], str) or not data["calendar_id"].strip() or data["calendar_id"].lower() == "primary":
         raise ValueError("explicit_canonical_calendar_id_required")
     directory = external_state(file, data["state_directory"])
@@ -60,19 +71,60 @@ def configuration(path):
             raise ValueError("invalid_execution_policy")
     else:
         raise ValueError("invalid_execution_policy")
+    if managed_skill:
+        account = data["feishu_identity"]
+        if (type(account) is not dict or set(account) != {"profile", "open_id"}
+                or not isinstance(account["profile"], str) or not account["profile"].strip()
+                or not isinstance(account["open_id"], str) or not account["open_id"].startswith("ou_")
+                or (context is not None and context.scope_ref != data["calendar_id"])
+                or allowed not in ([], ["CREATE"])):
+            raise ValueError("invalid_skill_binding")
     return data, context, directory, allowed
+
+
+def configured_calendar(data):
+    if "feishu_identity" in data:
+        from .skill_setup import SkillCalendar
+        return SkillCalendar(data["calendar_id"], data["feishu_identity"])
+    return FeishuCalendar(data["calendar_id"])
+
+
+def build_session(data, context, directory, allowed, store):
+    calendar = configured_calendar(data)
+    backend = FeishuHost(calendar, directory / "provider.sqlite")
+    reader = FeishuPlanningReader(calendar, connection_ref=context.connection_ref, scope_ref=context.scope_ref)
+    return AgentSession(store, context=context,
+        calendar_reader=reader, backend=backend, allowed_operations=allowed)
 
 
 def session(config_path):
     data, context, directory, allowed = configuration(config_path)
-    calendar = FeishuCalendar(data["calendar_id"])
-    backend = FeishuHost(calendar, directory / "provider.sqlite")
-    reader = FeishuPlanningReader(calendar, connection_ref=context.connection_ref, scope_ref=context.scope_ref)
-    return AgentSession(PlanningStore(directory / "agent.sqlite"), context=context,
-        calendar_reader=reader, backend=backend, allowed_operations=allowed)
+    return build_session(data, context, directory, allowed, PlanningStore(directory / "agent.sqlite"))
 
 
-def doctor(config_path, check_connection=False):
+def managed_session(config_path, args):
+    data, context, directory, allowed = configuration(config_path, managed_skill=True)
+    source_user_id = getattr(args, "source_user_id", None)
+    if args.command == "open":
+        if source_user_id is not None and not source_user_id.strip():
+            raise ValueError("skill_source_identity_required")
+        if context is None and source_user_id is None:
+            raise ValueError("skill_source_identity_required")
+        if context is not None and source_user_id is not None and source_user_id != context.user_id:
+            raise ValueError("skill_source_identity_mismatch")
+    store = PlanningStore(directory / "agent.sqlite")
+    if context is None:
+        if args.command != "open":
+            key = getattr(args, "request", None)
+            if key is None:
+                key = store.request_for_command(args.command_id)
+            source_user_id = store.get(key)["context"]["user_id"]
+        context = UpstreamContext(source_user_id, data["timezone"], data["connection_ref"],
+                                  data["calendar_id"], namespace="threadplan-skill")
+    return build_session(data, context, directory, allowed, store)
+
+
+def doctor(config_path, check_connection=False, *, managed_skill=False):
     checks = {"python": sys.version.split()[0], "python_supported": sys.version_info >= (3, 11),
               "model_service_required": False, "explicit_calendar_scope": True}
     try:
@@ -80,15 +132,17 @@ def doctor(config_path, check_connection=False):
     except Exception as error:
         checks["lark_cli_error"] = str(error)
     try:
-        data, context, directory, allowed = configuration(config_path)
-        checks.update(configuration_valid=True, user_id=context.user_id,
-                      timezone=context.default_timezone, state_directory=str(directory),
+        data, context, directory, allowed = configuration(config_path, managed_skill=managed_skill)
+        checks.update(configuration_valid=True, timezone=context.default_timezone if context else data["timezone"],
+                      state_directory=str(directory),
                       execution_allowed_operations=allowed)
+        if context is not None:
+            checks["user_id"] = context.user_id
     except Exception as error:
         checks.update(configuration_valid=False, configuration_error=str(error))
     if check_connection and checks.get("configuration_valid"):
         try:
-            calendar = FeishuCalendar(data["calendar_id"])
+            calendar = configured_calendar(data)
             calendar.get_calendar(approved=True)
             checks["calendar_verified"] = True
         except Exception as error:
@@ -166,18 +220,34 @@ async def independent(args):
     return value
 
 
-def main(argv=None, *, host_only=False):
+def main(argv=None, *, host_only=False, managed_skill=False):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", default=os.environ.get("THREADPLAN_CONFIG"),
-                        help="Trusted user/host configuration; never a model-generated grant")
+    if managed_skill:
+        from . import skill_setup
+    else:
+        parser.add_argument("--config", default=os.environ.get("THREADPLAN_CONFIG"),
+                            help="Trusted user/host configuration; never a model-generated grant")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("policy", help="Read the shared behavior contract without a model or connection")
-    setup = sub.add_parser("configure", help="Create a new external read-only configuration")
-    setup.add_argument("--user-id", required=True, help="Real original-message identity of this user")
-    setup.add_argument("--calendar-id", required=True, help="User-selected canonical Feishu calendar ID")
+    if managed_skill:
+        sub.add_parser("setup-check", help="First-use CLI, account and scope diagnostics; no writes")
+        setup = sub.add_parser("initialize", help="User-only: create and bind one private ThreadPlan calendar")
+        setup.add_argument("--allow-event-create", required=True, action="store_true",
+                           help="Authorize subsequent event creation in this calendar only")
+        setup.add_argument("--recover-calendar-id", help="Read-only verification of a pending calendar creation")
+        sub.add_parser("record", help="Record one explicit personal calendar request").add_argument("--input", required=True)
+        supplement = sub.add_parser("prepare-supplement", help="Preview changes to a verified direct-entry receipt")
+        supplement.add_argument("--receipt", required=True)
+        supplement.add_argument("--input", required=True)
+        for command in ("apply-supplement", "direct-status", "direct-recover"):
+            sub.add_parser(command).add_argument("--command-id", required=True)
+    else:
+        setup = sub.add_parser("configure", help="Create a new external read-only configuration")
+        setup.add_argument("--calendar-id", required=True, help="User-selected canonical Feishu calendar ID")
+        setup.add_argument("--state-directory", default="threadplan-state")
+        setup.add_argument("--user-id", required=True, help="Real original-message identity of this user")
     setup.add_argument("--timezone", required=True, help="User's IANA timezone")
-    setup.add_argument("--state-directory", default="threadplan-state")
-    if not host_only:
+    if not (host_only or managed_skill):
         for name in ("analyze", "run"):
             analyze = sub.add_parser(name, help="Independent model analysis; run also applies trusted preauthorization")
             analyze.add_argument("--input", required=True)
@@ -188,6 +258,8 @@ def main(argv=None, *, host_only=False):
     health.add_argument("--check-connection", action="store_true", help="Read the configured calendar; no writes")
     opened = sub.add_parser("open")
     opened.add_argument("--input", required=True, help="Original v0.3 messages JSON file, or - for stdin")
+    if managed_skill:
+        opened.add_argument("--source-user-id", help="Trusted host identity for this message source, not from message text")
     read = sub.add_parser("read")
     read.add_argument("--request", required=True)
     read.add_argument("--activity", help="Semantic activity_ref for independent read-failure handling")
@@ -211,14 +283,36 @@ def main(argv=None, *, host_only=False):
             value, code = {"policy": DECISION_POLICY}, 0
         elif args.command == "configure":
             value, code = configure(args), 0
+        elif args.command == "setup-check":
+            value, code = skill_setup.setup_check(), 0
+            if value["state"] == "BOUND":
+                configuration(skill_setup.binding_path(), managed_skill=True)
+        elif args.command == "initialize":
+            value, code = skill_setup.initialize(args, load_json=load_json, validate_path=external_state), 0
+        elif managed_skill and args.command in {"record", "prepare-supplement", "apply-supplement",
+                                                "direct-status", "direct-recover"}:
+            from .skill_direct import DirectSkill
+            data, _, directory, allowed = configuration(skill_setup.binding_path(), managed_skill=True)
+            direct = DirectSkill(data, directory, allowed)
+            if args.command == "record":
+                value = direct.record(load_json(args.input))
+            elif args.command == "prepare-supplement":
+                value = direct.prepare_supplement(args.receipt, load_json(args.input))
+            elif args.command == "apply-supplement":
+                value = direct.apply_supplement(args.command_id)
+            else:
+                value = direct.status(args.command_id, recover=args.command == "direct-recover")
+            code = 0 if value["state"] not in {"FAILED_BEFORE_WRITE", "OUTCOME_UNKNOWN", "IN_FLIGHT", "VERIFY_PENDING"} else 1
         elif args.command in {"analyze", "run"}:
             value = asyncio.run(independent(args))
             code = 0 if value["analysis"]["state"] == "COMPLETED" and not value.get("errors") else 1
         elif args.command == "doctor":
-            value = doctor(args.config, args.check_connection)
+            config_path = skill_setup.binding_path() if managed_skill else args.config
+            value = doctor(config_path, args.check_connection, managed_skill=managed_skill)
             code = 0 if value["ready"] else 2
         else:
-            runtime = session(args.config)
+            config_path = skill_setup.binding_path() if managed_skill else args.config
+            runtime = managed_session(config_path, args) if managed_skill else session(config_path)
             if args.command == "open":
                 value = runtime.open(load_json(args.input))
             elif args.command == "read":

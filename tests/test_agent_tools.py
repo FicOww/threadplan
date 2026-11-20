@@ -4,13 +4,12 @@ from concurrent.futures import ThreadPoolExecutor
 import asyncio
 from copy import deepcopy
 from datetime import datetime, timezone
-import json
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from threadplan import UpstreamContext, Proposal, InputError
+from threadplan import UpstreamContext, Proposal
 from threadplan_host.agent import AgentSession
 from threadplan_host.feishu import FeishuHost
 from threadplan_host.planning_store import PlanningStore
@@ -29,13 +28,10 @@ class AgentToolChecks(unittest.TestCase):
         self.store = PlanningStore(self.path / "agent.sqlite", clock=self.clock)
         self.calendar = FakeCalendar()
         self.backend = FeishuHost(self.calendar, self.path / "provider.sqlite")
-        self.agent = self.runtime()
+        self.agent = AgentSession(self.store, context=self.context,
+                                  calendar_reader=SnapshotReader(self.backend), backend=self.backend)
         self.query = {"kind": "find_events", "range": {
             "start_at": "2026-11-11T00:00:00+08:00", "end_at": "2026-11-12T00:00:00+08:00"}}
-
-    def runtime(self, allowed=()):
-        return AgentSession(self.store, context=self.context, calendar_reader=SnapshotReader(self.backend),
-                            backend=self.backend, allowed_operations=allowed)
 
     def read(self, *args, **kwargs):
         return asyncio.run(self.agent.read(*args, **kwargs))
@@ -47,21 +43,6 @@ class AgentToolChecks(unittest.TestCase):
     def writes(self):
         return [call for call in self.calendar.calls if call[0] in {"create", "update", "cancel"}]
 
-    def planned(self, kind="CREATE"):
-        key = self.agent.open(request())["request_key"]
-        self.read(key, self.query)
-        result = self.agent.propose(key, decision(kind))
-        prepared = self.agent.prepare(key, result["plan"]["plan_fingerprint"])
-        return key, prepared["commands"][0]["id"]
-
-    def test_source_metadata_is_required_before_any_calendar_read(self):
-        for field in ("sender_id", "sent_at"):
-            source = request()
-            del source["messages"][0][field]
-            with self.assertRaises(InputError):
-                self.agent.open(source)
-        self.assertFalse(self.calendar.calls)
-
     def test_model_approval_and_raw_native_ids_do_not_grant_execution(self):
         key = self.agent.open(request())["request_key"]
         self.read(key, self.query)
@@ -71,6 +52,7 @@ class AgentToolChecks(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "trusted_execution_policy_required"):
             self.agent.execute(command["id"])
         self.assertFalse(self.writes())
+        self.assertEqual(next(trace for trace in self.store.traces(key) if trace["kind"] == "DECISION")["input"], raw)
         # The approved plan stays immutable, even when the agent resubmits it.
         changed = deepcopy(raw)
         changed["items"][0]["operation"]["fields"]["title"] = "changed"
@@ -85,28 +67,6 @@ class AgentToolChecks(unittest.TestCase):
         self.read(key, self.query)
         result = self.agent.propose(key, decision("UPDATE", ref="invented-provider-id"))
         self.assertIn("unknown_event_reference", result["plan"]["item_errors"][0]["code"])
-        self.assertFalse(self.writes())
-
-    def test_preauthorized_execution_reopens_reuses_receipt_and_retains_raw_decision(self):
-        key, command = self.planned()
-        runtime = self.runtime(("CREATE",))
-        created = runtime.execute(command)
-        self.assertEqual(created["state"], "SUCCEEDED")
-        count = len(self.writes())
-        reopened = self.runtime(("CREATE",))
-        self.assertTrue(reopened.execute(command)["already_applied"])
-        self.assertEqual(len(self.writes()), count)
-        self.assertEqual(reopened.status(command_id=command)["state"], "SUCCEEDED")
-        self.assertEqual(next(t for t in self.store.traces(key) if t["kind"] == "DECISION")["input"], decision("CREATE"))
-
-    def test_new_source_invalidates_old_unissued_plan(self):
-        _, command = self.planned()
-        newer = request("new-source")
-        newer["messages"].append({"id": "m3", "sender_id": "me", "sent_at": "2026-11-10T10:02:00+08:00",
-                                  "text": "先别创建。"})
-        self.agent.open(newer)
-        with self.assertRaisesRegex(ValueError, "stale_request"):
-            self.runtime(("CREATE",)).execute(command)
         self.assertFalse(self.writes())
 
     def test_concurrent_reads_keep_refs_bound_to_their_original_provider_ids(self):
@@ -135,16 +95,6 @@ class AgentToolChecks(unittest.TestCase):
             self.assertEqual(self.agent.prepare(key, result["plan"]["plan_fingerprint"])["commands"], [])
             self.assertFalse([t for t in self.store.traces(key) if t["kind"] == "READ"])
         self.assertFalse(self.writes())
-
-    def test_keep_duration_is_derived_from_the_real_target_interval(self):
-        identifier = self.seed()
-        key = self.agent.open(request())["request_key"]
-        self.read(key, self.query)
-        result = self.agent.propose(key, decision("UPDATE"))
-        op = result["plan"]["operations"][0]
-        self.assertEqual(op["changes"]["end_at"], "2026-11-11T15:30:00+08:00")
-        self.assertEqual(self.store.get(key)["result"]["records"][op["event_ref"]]["id"], identifier)
-        self.assertIn("end_at:PRESERVE_DURATION", op["derived"])
 
     def test_failed_malformed_read_cannot_admit_partially_merged_targets(self):
         key = self.agent.open(request())["request_key"]

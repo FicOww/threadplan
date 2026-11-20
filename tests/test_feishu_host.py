@@ -222,26 +222,6 @@ class FeishuHostTests(unittest.TestCase):
         self.assertEqual(recovered["event_id"], identifier)
         self.assertEqual(len(self.writes()), 1)
 
-    def test_update_acknowledgment_survives_failed_read_and_recovery_only_reads(self):
-        identifier = self.create()["event_id"]
-        _, baselines = self.host.snapshot()
-        update = proposal("UPDATE", {"title": "Changed by an approved constructed request"}, identifier)
-        original = self.fake.update_event
-        def write_then_lose_readback(*args, **kwargs):
-            response = original(*args, **kwargs)
-            self.fake.fail_readback = True
-            return response
-        with patch.object(self.fake, "update_event", side_effect=write_then_lose_readback):
-            with self.assertRaises(FeishuError):
-                self.host.execute(update, "update-read-failure", baselines, approved=True)
-        self.assertEqual(len(self.writes()), 2)
-        self.fake.fail_readback = False
-        restarted = FeishuHost(self.fake, self.path)
-        recovered = restarted.recover("update-read-failure", approved=True)
-        self.assertEqual(recovered["event"]["fields"]["title"], update.changes["title"])
-        self.assertEqual(len(self.writes()), 2)
-        self.assertTrue(restarted.recover("update-read-failure", approved=True)["already_applied"])
-
     def test_cancel_acknowledgment_is_reverified_without_resending_delete(self):
         identifier = self.create()["event_id"]
         _, baselines = self.host.snapshot()

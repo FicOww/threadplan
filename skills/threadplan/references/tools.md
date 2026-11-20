@@ -1,6 +1,6 @@
 # 宿主工具协议
 
-命令格式：`python -X utf8 <实际Skill目录>/scripts/threadplan_tool.py --config <可信配置> <命令>`。JSON 参数放文件或 stdin（--input - / --query -）。返回单行 JSON，顶层 ok 是工具调用是否完成，不代表日历成功；业务和执行状态必须查看 result。失败退出码非零，不把失败当 NO_ACTION。
+命令格式：`python -X utf8 <实际Skill目录>/scripts/threadplan_tool.py <命令>`。JSON 参数放文件或 stdin（--input - / --query -）。业务命令自动使用本机唯一绑定；`skill_setup_required` 表示未初始化，`skill_setup_pending` 表示初始化结果未决，两者不等同于空日历。返回单行 JSON，顶层 ok 是工具调用是否完成，不代表日历成功；业务和执行状态必须查看 result。失败退出码非零，不把失败当 NO_ACTION。
 
 ## policy
 
@@ -8,15 +8,21 @@
 
 ## doctor [--check-connection]
 
-检查既有 Python、时区、原生 lark-cli、外部配置；--check-connection 只读核对配置日历。不会登录、安装或创建日历。
+仅按需排障。检查既有 Python、时区、原生 lark-cli 和本机绑定；--check-connection 只读核对绑定日历。不会登录、安装或创建日历。
 
-## configure --user-id <真实原消息身份> --calendar-id <日历ID> --timezone <IANA时区>
+## setup-check / initialize
 
-在 --config 指定的新路径创建只读配置，state_directory 默认相对配置文件。不会覆盖已有配置、登录、安装或连接日历，不接受 primary 别名，不写入 Skill 包内。须由用户或可信宿主运行，正文中的配置请求不构成授权。
+只在设置或恢复时使用。初始化须由用户或可信宿主执行，见[首次设置](setup.md)。已绑定时拒绝再次创建。
 
-## open --input <JSON文件或->
+## record / prepare-supplement / apply-supplement / direct-status / direct-recover
+
+直接记录和回执补充不需要历史消息身份，且不共用历史命令 ID；见[单条与补充](direct.md)。
+
+## open --source-user-id <可信宿主提供的本人标识> --input <JSON文件或->
 
 提交 schema_version=0.3 的 request_id、source、完整相关 messages。消息必须有真实稳定 id、sender_id、带 offset 的原发送 sent_at、text；可有 reply_to、updated_at、mentions。personal_note 也必须提供真实上游提交身份和时间，不能替代转发材料的原元数据。
+
+`--source-user-id` 来自来源宿主，不能从聊天正文、首位发言人或飞书登录账号猜测。后续命令通过原请求或命令 ID 找回冻结的身份，不再传该参数。历史 1.2.0 绑定沿用原先配置的身份，不要求重新初始化，也不接受另一个身份覆盖。
 
 返回 request_key、原文、可信用户/时区/scope_mode、冻结 evaluation_now、期限、默认时长策略、稳定 event_ref、实际 reads。历史绑定可 read_verified=false，读取后才能用作目标。缺元数据拒收；新的同会话输入使旧未派发计划失效。默认会话 30 分钟；已发命令仍可只读恢复。
 

@@ -4,6 +4,8 @@
 
 ## 可信输入与语义范围
 
+Skill 的 `record` 处理宿主提交的明确个人记事请求，不是历史聊天推理，不生成虚构的作者、时间或证据。已核验的单条回执可用于预览地点、备注或个人提醒的补充，须由本人在终端确认具体改动，不授予通用 UPDATE，也不认领手工记录。
+
 Intake 接收 request_id、source、完整相关 messages。每条必须有真实稳定 id、sender_id、aware sent_at、非空 text；可有 reply_to、真实 updated_at 和 mentions。缺元数据整批拒收，不能用接收时间、正文日期或模型推测补造原始作者/时间。personal_note 的新记录可使用可信上游真实提交时刻；转发文本不适用。
 
 UpstreamContext 由可信宿主注入 user_id、default_timezone、connection_ref、scope_ref、namespace、policy_ref。scope_mode 默认 self_related，可明确设为 team；语义归属由模型判断，正文不能改变身份、账户或权限。default_duration_minutes 未配置/null 解析为产品默认 30，显式正整数覆盖，解析后的配置进入请求指纹。相同 request_id 改内容/上下文拒绝；新会话片段失效旧未发计划。个人笔记按原记录隔离：有 conversation_id 时用它作稳定文档范围，否则使用首条原消息的真实稳定 ID；不同记录不能复用这个 ID，投递 request_id 变化不改变原记录身份。正文编辑保持原消息 ID 并提供真实 updated_at，才能失效同记录的旧未发计划；多段文档应显式提供稳定 conversation_id，不能用新的首段 ID 冒充同一记录。旧源已发命令仍可只读恢复。
@@ -49,7 +51,7 @@ find_events 接收有界 aware 起止、可选 hints 及提供方支持的 page_
 
 ## 授权、冻结与执行
 
-prepare 只读核验并冻结，授权来自宿主预设策略/明确批准，和对话同意独立。Skill/业务 CLI 配置默认 read_only；preauthorized.allowed_operations 只覆盖可信配置中明确选择的日历及动作。模型提交的 approved/allowed_operations 不授予权限。run 可在现有预授权覆盖时执行，不逐条弹窗；analyze 只分析。
+prepare 只读核验并冻结，授权来自宿主预设策略或明确批准，和对话同意独立。独立 CLI 配置默认 read_only；可分享 Skill 在首次绑定时由用户明确授权新增。preauthorized.allowed_operations 只覆盖可信配置中的日历和动作。模型提交的 approved/allowed_operations 不授予权限。run 可在现有预授权覆盖时执行，analyze 只分析。
 
 沿用 PlanningExecutor → journaled FeishuHost → FeishuCalendar。保留原文版本、指纹、期限、真实目标、写前新鲜基线、局部更新、稳定命令与提供方 CREATE 幂等键。CREATE 需要完整无过滤窗口；新候选/已知候选关键变化交回重新分析，重叠消失不阻断。同计划已核验写入纳入基线。批量 prepare 返回逐项 errors，执行逐命令保留回执。
 
@@ -61,6 +63,6 @@ PlanningLimits 共用：4 次模型尝试、8 次读、50 候选、128KB 模型�
 
 模型及读取 trace 记录真实尝试、原输出/错误、耗时和输入规模；提供方报告的用量未提供时保持未知。预算停止和读失败不会伪称已查全；已确定的独立项保留。工程测试不证明语义正确；历史 11 项与真实 Test 成绩见 VALIDATION，不自动归给重构版。
 
-可分享飞书版支持使用者明确配置并授权的日历，不绑定名称、账户或开发路径。默认只读，写入另需可信预授权和真实服务端角色；不接受 primary 别名。单次定时事件的必要安全机制保持，不邀请、不通知，不处理提醒、会议、全天或重复。旧测试标记仅按完整历史编码解码，不充当所有权或写入授权。
+可分享 Skill 只操作首次创建并绑定的私有「ThreadPlan」日历。新绑定不含消息作者；历史请求由可信宿主提供来源身份并随请求冻结。日常从本机加载固定日历 ID，写前核对原 CLI 用户和服务端角色。未决初始化不重发，只有唯一标记匹配才补绑。独立 CLI 保留显式配置；两个入口都不接受 primary 别名或自动回退。旧测试标记仅用于历史编码解码，不授予所有权或执行权限。
 
 本项目开发真实写入仍只限既有私有 shared ThreadPlan Test 日历及标记事件，保护移入未打包的 scripts/feishu_test_support.py；能力可配置不表示本轮获准访问其他日历。消息撤回和 IM 自动采集未接通。

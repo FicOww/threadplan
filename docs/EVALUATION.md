@@ -30,7 +30,7 @@ python -B -X utf8 scripts/evaluate_simulated_chats.py --dataset target_gaps --pr
 
 scripts/evaluate_skill_agent.py --prepare <新版ZIP> --dataset target_v1 建立隔离的已打包工具前向环境；宿主仅收到 Skill、原文与实际查询返回。--score 在决策后独立读取标签，评分和宿主复核分别保存。宿主实际模型/身份暴露程度、是否已经见过开发材料必须如实报告，不称独立盲测。
 
-scripts/verify_skill.py 默认预览，--run 仅在已有明确授权的私有 Test 日历进行一条标记记录的连续新增/改期/取消、读回和重复回执核验。它是零模型调用的构造执行验收，不是语义端到端成绩。恢复脚本保留只读恢复测试，不盲重发未知 CREATE。
+scripts/verify_skill.py 默认预览，--run 仅适用于历史 1.1.0 ZIP，并限已有明确授权的私有 Test 日历。这是零模型调用的构造执行验收，不是语义端到端成绩；正式 Skill 不使用这个日历。恢复脚本保留只读检查，不盲重发未知 CREATE。
 
 ## 历史材料
 

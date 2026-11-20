@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 import sqlite3
 
-from threadplan.adapters.feishu import (FeishuApprovalRequired, FeishuCalendar,
-    FeishuError, _proposal, event_record, check_event_scope)
+from threadplan.adapters.feishu import (BASELINE_FIELDS, FeishuApprovalRequired, FeishuCalendar,
+    FeishuError, _proposal, event_record, check_event_scope, reminder_minutes)
 from threadplan.contracts import Event, Proposal
 from threadplan.codec import _aware_time
 
@@ -114,7 +114,11 @@ class FeishuHost:
             existing = db.execute("SELECT state FROM authorized_events WHERE event_id=?", (identifier,)).fetchone()
         if not ((row is not None and row["state"] == "active") or (existing is not None and existing["state"] == "active")):
             raise FeishuError("Event is not active in the trusted execution ledger")
-        check_event_scope(raw)
+        check_event_scope(raw, allow_reminders=self.direct_entry)
+
+    @property
+    def direct_entry(self):
+        return getattr(self.calendar, "direct_entry", False)
 
     def _authorize_existing(self, current):
         """Admission accompanies exact-target execution approval, never a read."""
@@ -122,6 +126,8 @@ class FeishuHost:
         if identifier in self.calendar.managed_event_ids | self.calendar.authorized_event_ids:
             self._managed(current)
             return
+        if self.direct_entry:
+            raise FeishuError("Supplement requires an active managed event")
         check_event_scope(current)
         normalize_event(current)
         if current.get("status") == "cancelled":
@@ -142,6 +148,10 @@ class FeishuHost:
             if key in {"start_at", "end_at"}:
                 expected_time, actual_time = _aware_time(expected), _aware_time(actual)
                 matches = expected_time is not None and actual_time is not None and expected_time == actual_time
+            elif key == "reminder_minutes":
+                matches = expected == reminder_minutes(raw)
+            elif key == "location_address":
+                matches = expected == (raw.get("location") or {}).get("address")
             else:
                 matches = expected == actual
             if not matches:
@@ -189,7 +199,7 @@ class FeishuHost:
             raise
         return events, baselines
 
-    def _verify_receipt(self, projected, approval_key, result):
+    def _verify_receipt(self, projected, approval_key, result, *, baseline=None):
         """Verify an acknowledged write using reads only."""
         identifier = result["event_id"]
         if projected.operation == "CANCEL":
@@ -203,8 +213,20 @@ class FeishuHost:
         else:
             raw = self.calendar.get_event(identifier, approved=True)
             self._managed(raw)
+            if self.direct_entry and raw.get("status") != "confirmed":
+                raise FeishuError("Direct event read-back was not confirmed by the provider")
             event = normalize_event(raw)
             self._verify_fields(event, projected, raw)
+            if self.direct_entry and projected.operation == "UPDATE":
+                changed = set()
+                if "location" in projected.changes:
+                    changed.add("location")
+                if "description" in projected.changes:
+                    changed.update(("description", "description_rich"))
+                if "reminder_minutes" in projected.changes:
+                    changed.add("reminders")
+                if any(raw.get(key) != baseline.get(key) for key in BASELINE_FIELDS if key not in changed):
+                    raise FeishuError("Supplement read-back changed an unapproved field")
             result.update(provider_event=raw, event={"id": event.id, "fields": event.fields})
             with self.connect() as db:
                 db.execute("UPDATE managed_events SET provider_event=? WHERE event_id=?", (_json(raw), identifier))
@@ -242,13 +264,15 @@ class FeishuHost:
             result = {"scope": "configured_feishu_calendar", "operation": projected.operation,
                       "event_id": projected.target_event_id, "already_applied": False,
                       "excluded_participants": list(original.changes.get("participants") or []),
-                      "attendee_sync": False, "reminders": False, "provider_acknowledged": False,
+                      "attendee_sync": False, "reminders": "reminder_minutes" in projected.changes,
+                      "provider_acknowledged": False,
                       "reconciliation_evidence": "desired_state_verified_after_unknown_write"}
         else:
             raise FeishuError("Execution outcome is unresolved; recovery will not resend a write",
                               details={"approval_key": approval_key, "state": row["state"]})
         try:
-            return dict(self._verify_receipt(projected, approval_key, result),
+            return dict(self._verify_receipt(projected, approval_key, result,
+                                            baseline=json.loads(command["baseline"])),
                         recovered_verification=True)
         except Exception as exc:
             self._read_failed(exc)
@@ -278,7 +302,7 @@ class FeishuHost:
         if excluded and exclude_attendees is not True:
             raise FeishuError("Explicit exclusion of attendee synchronization is required")
         projected = replace(proposal, changes={key: value for key, value in proposal.changes.items() if key != "participants"})
-        _proposal(projected, projected.operation, approval_key)
+        _proposal(projected, projected.operation, approval_key, direct=self.direct_entry)
         if projected.operation not in {"CREATE", "UPDATE", "CANCEL"}:
             raise FeishuError("Unsupported operation")
         baseline = None
@@ -326,7 +350,7 @@ class FeishuHost:
             self.status.update(connected=True, verified_at=_now(), error=None)
             result = {"scope": "configured_feishu_calendar", "operation": projected.operation,
                       "already_applied": False, "excluded_participants": excluded,
-                      "attendee_sync": False, "reminders": False}
+                      "attendee_sync": False, "reminders": "reminder_minutes" in projected.changes}
             if projected.operation == "CREATE":
                 mutation_started = True
                 created = send()
@@ -358,7 +382,7 @@ class FeishuHost:
                     db.execute("UPDATE receipts SET state='write_acknowledged',result=?,updated_at=? WHERE approval_key=?",
                                (_json(result), _now(), approval_key))
                 acknowledged = True
-            return self._verify_receipt(projected, approval_key, result)
+            return self._verify_receipt(projected, approval_key, result, baseline=baseline)
         except Exception as exc:
             self._read_failed(exc)
             error = {"message": str(exc), "type": type(exc).__name__, "details": getattr(exc, "details", {})}

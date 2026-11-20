@@ -6,7 +6,7 @@
 
 v0.3 核心产出决策与平台无关操作，由 `PlanningExecutor` 转为 `Proposal` 执行。上游策略或人工授权后，调用 `threadplan.adapters.feishu.FeishuCalendar`；所有对外方法默认拒绝执行，必须显式传 `approved=True`。对话中的约定状态不等于执行授权。adapter 不登录、不读写密钥、不切换 bot、不安装 CLI 或依赖。
 
-可分享版由可信配置选择真实 calendar_id；不绑定开发者日历名称、类型、账户、路径或网络。拒绝隐式 primary 别名，每次写入重新核对真实日历 ID 和 owner/writer；reader 可只读使用。默认 read_only，仅可信宿主的明确预授权允许相应操作。新建使用原样标题/备注，private/free、无会议、提醒、邀请或通知。含参与人、重复、提醒、全天或会议的已有事件不改动。
+可分享 Skill 首次创建并绑定私有「ThreadPlan」日历；写前核验原账号、日历 ID 和权限，只默认授权新增。单条入口可按明确指令写本人提醒，凭回执补充需逐次确认。独立 CLI 仍支持选择日历并默认只读。两者都不写入其他日历，不邀请或通知他人，不创建会议、全天或重复事件。
 
 项目开发真实写入继续只允许既有私有 shared ThreadPlan Test 和标记事件，约束位于未打包的 scripts/feishu_test_support.py。开发专用创建辅助 create_private_test_calendar 也已移出产品；本轮不创建新日历。历史完整测试格式的前缀/尾注仅用于老事件和回执解码，不是产品所有权门禁，普通用户记录不会自动加标记。
 
@@ -44,7 +44,7 @@ adapter 直接运行已安装的原生 `lark-cli` 可执行文件，Windows 会�
 
 `FeishuHost`须由调用者显式传入台账路径，不含开发目录默认值；历史开发台账保留原地，不迁移或删除。`threadplan_host.feishu.FeishuHost`将冻结命令存入`receipt_commands`，区分 `failed_before_write`、`in_progress`/`outcome_unknown`、`write_acknowledged`/`verify_pending` 和 `succeeded`。`receipt(key)` 只读本地记录；`recover(key, approved=True)` 不发送创建/修改/删除。已确认写入时重做读取验证；未知 UPDATE/CANCEL 若有可信目标 ID，可读取并核对实际期望状态，成功回执标注 `provider_acknowledged=False` 和读取核对依据，表示接收端未观察到原写入确认，不断言原请求一定成功。未知 CREATE 无 ID、旧版命令信息不足或状态仍不匹配时保持未决，不按标题认领或盲重发。已确认写入后再 `execute` 同一冻结审批也只恢复验证。
 
-完整Skill使用外部用户配置指定独立state_directory，保存agent.sqlite/provider.sqlite，不复用或打包个人台账；执行策略默认read_only，启用范围内预授权后才写入。安装与工具协议见[Skill](../skills/threadplan/SKILL.md)。`python -X utf8 scripts/verify_skill.py`仅预览安装包CLI验收，显式`--run`才对一条标记Test记录连续新增/改期/取消并核验；这是零模型调用的构造工程操作，不计语义任务成功率。
+正式 Skill 将绑定、初始化记录和台账存放在包外。安装及工具协议见[Skill](../skills/threadplan/SKILL.md)。`scripts/verify_skill.py` 仅保留 1.1.0 的私有 Test 验收，不适用于正式绑定。不将构造工程操作计入语义任务成功率。
 
 历史 v0.2 真实创建/改期/取消及三阶段只读恢复回执保留，旧业务验收脚本已退役。真实运行必须显式指定`--provider`；当前业务验收入口为 `scripts/verify_planning_v3.py`，恢复工具为 `scripts/verify_calendar_recovery.py`；显式 `--scenario lifecycle` 验证新增/改期/取消，`--scenario cancel-only --cases 1` 单独验证取消，`--scenario existing --cases 2 --max-model-calls 6` 验证外部已建标记TEST事件的改期与取消。`--scenario mixed --provider codex --cases 1 --max-model-calls 3`预览混聊组合验收，显式加`--run`才执行：两条已有测试记录保持，只新增下午安排与备注，读回与重复回执核验后清理。真实写入验收不附加影子复核；旧实验分支源码留在本地归档。默认不因此重复远端操作。实际范围和失败见 [VALIDATION.md](../reports/VALIDATION.md)。
 

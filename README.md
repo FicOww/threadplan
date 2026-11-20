@@ -57,13 +57,13 @@ python -X utf8 examples/planning.py
 python -X utf8 scripts/build_skill.py
 ```
 
-产物是 `dist/threadplan-1.1.0.zip`。解压后按[安装与配置](skills/threadplan/references/setup.md)放入 Skill 目录，使用自己的飞书账号登录，并选择要操作的日历。需要本机已有原生 `lark-cli`；配置和运行状态保存在 Skill 文件夹之外。
+产物是 `dist/threadplan-1.3.0.zip`。解压后放入 Skill 目录，按[首次设置](skills/threadplan/references/setup.md)登录飞书，创建并绑定私有「ThreadPlan」日历。已有绑定可直接沿用。
 
-Skill 使用 Codex 的模型理解聊天，无需另配 LLM API Key。初始配置为只读，可以先查看计划，再决定是否允许写入。
+明确交代一条日程可走[单条入口](skills/threadplan/references/direct.md)，不需要历史消息作者。分析历史聊天仍由来源宿主提供真实元数据。单条写入成功后可凭回执预览地点、备注或个人提醒的补充，本人在终端确认后才更新原条目。不写入其他日历，也不增加长期更新权。
 
 ### 从命令行调用
 
-先按[配置说明](skills/threadplan/references/setup.md)准备自己的配置，再提供消息 JSON 文件。以下路径是示例，需要换成实际文件：
+独立 CLI 不使用 Skill 的默认绑定。按[独立 CLI 配置示例](skills/threadplan/references/config.example.json)准备自己的配置，再提供消息 JSON 文件。以下路径是示例，需要换成实际文件：
 
 ```bash
 # 只读检查飞书连接
@@ -89,7 +89,7 @@ ThreadPlan 先形成计划，再按接入方的授权执行。聊天中的“好
 
 修改前会重新读取目标，写入后会读回核对。执行记录用于避免重试时重复创建；遇到结果不明的请求，用原命令的 `status` / `recover` 查询和恢复，恢复过程只读。
 
-目前支持单次、有明确起止时间的事件。重复日程、全天事件、提醒、会议邀请和消息撤回暂不支持，也不会发送邀请或通知。
+目前支持单次定时事件。个人提醒只支持 Skill 的单条直达和回执补充。重复日程、全天事件、会议邀请及消息撤回暂不支持，也不会向他人发送通知。
 
 ## 开发
 

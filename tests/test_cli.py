@@ -62,11 +62,6 @@ class CliChecks(unittest.TestCase):
         self.assertTrue(result["result"]["execution"][0]["already_applied"])
         self.assertEqual(len(self.calendar.raw), 1)
 
-    def test_skill_mode_has_no_independent_model_command(self):
-        with self.assertRaises(SystemExit) as error, redirect_stdout(io.StringIO()):
-            cli.main(["analyze", "--provider", "codex", "--input", str(self.input)], host_only=True)
-        self.assertEqual(error.exception.code, 2)
-
     def test_one_write_rejection_does_not_block_an_independent_command(self):
         identifier = self.backend.execute(Proposal("CREATE", "confirmed", ("seed",), {
             "title":"old", "start_at":"2026-11-11T14:00:00+08:00", "end_at":"2026-11-11T14:30:00+08:00"}),

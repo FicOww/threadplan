@@ -74,6 +74,13 @@ class PlanningStore:
         with self.connect() as db:
             return self.decode(db.execute("SELECT * FROM v3_requests WHERE id=?", (key,)).fetchone())
 
+    def request_for_command(self, identifier):
+        with self.connect() as db:
+            row = db.execute("SELECT request_key FROM v3_commands WHERE id=?", (identifier,)).fetchone()
+        if row is None:
+            raise ValueError("unknown_command")
+        return row["request_key"]
+
     def register(self, intake, context, *, duration_seconds):
         data, trusted = intake.to_dict(), context.to_dict()
         conversation = intake.conversation_key(context)
