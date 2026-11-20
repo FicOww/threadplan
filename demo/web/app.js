@@ -4,6 +4,7 @@ const main = document.querySelector("#main");
 const feedback = document.querySelector("#feedback");
 const dialog = document.querySelector("#confirmation");
 const confirmButton = document.querySelector("#confirmation-submit");
+const guideTemplate = document.querySelector("#threadplan-guide-template");
 const PAGE_SIZE = 12;
 const operationLabels = { CREATE: "新增日程", UPDATE: "修改日程", CANCEL: "取消日程" };
 const commandLabels = {
@@ -35,6 +36,7 @@ let noticeTimer;
 let pollTimer;
 let sandboxSeed;
 let routeVersion = 0;
+let guideView;
 
 function element(tag, className, ...children) {
   const node = document.createElement(tag);
@@ -84,7 +86,7 @@ async function run(control, action) {
 }
 
 function route(view, task, replace = false) {
-  const query = task ? "task=" + encodeURIComponent(task) : view === "library" ? "" : "view=" + view;
+  const query = task ? "task=" + encodeURIComponent(task) : view === "library" && !guideTemplate ? "" : "view=" + view;
   const url = window.threadplanOffline ? "#" + query : "/" + (query ? "?" + query : "");
   window.history[replace ? "replaceState" : "pushState"]({}, "", url);
   return renderRoute(true);
@@ -460,21 +462,32 @@ async function renderRoute(focus = false) {
   const currentVersion = ++routeVersion;
   const params = new URLSearchParams(window.threadplanOffline ? location.hash.slice(1) : location.search);
   const id = params.get("task");
-  let tab = ["history", "try"].includes(params.get("view")) ? params.get("view") : "library";
+  const requested = params.get("view");
+  let tab = ["library", "history", "try"].includes(requested) || requested === "guide" && guideTemplate
+    ? requested : !requested && guideTemplate ? "guide" : "library";
   main.setAttribute("aria-busy", "true");
   try {
     catalog ||= await api("/api/scenarios");
+    if (currentVersion !== routeVersion) return;
+    document.querySelector("#guide-nav").hidden = !guideTemplate;
     document.querySelector("#sandbox-nav").hidden = !catalog.live_enabled;
     document.querySelector(".mode").textContent = catalog.offline ? "离线回放" : "模拟试用";
     if (id) {
       const task = await api("/api/tasks/" + encodeURIComponent(id));
       if (currentVersion !== routeVersion) return;
       renderTask(task);
-      if (task.live) tab = "try";
+      tab = task.live ? "try" : "library";
       if (task.state === "RUNNING") pollTimer = window.setTimeout(() => renderRoute(), 1500);
     }
     else if (tab === "history") await historyView();
     else if (tab === "try") sandboxForm();
+    else if (tab === "guide") {
+      guideView ??= createThreadPlanGuide(guideTemplate, async () => {
+        await route("library");
+        window.scrollTo(0, 0);
+      });
+      main.replaceChildren(guideView);
+    }
     else library();
     for (const link of document.querySelectorAll("nav [data-nav]")) {
       if (link.dataset.nav === tab) link.setAttribute("aria-current", "page");

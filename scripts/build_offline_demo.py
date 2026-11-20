@@ -111,6 +111,7 @@ def render_html(scenes):
         (WEB / "offline.js").read_text(encoding="utf-8"),
         'window.threadplanOffline = createOfflineReplay({version:"' + version + '",scenes:' + packed + "});",
         (WEB / "calendar.js").read_text(encoding="utf-8"),
+        (WEB / "guide.js").read_text(encoding="utf-8"),
         (WEB / "app.js").read_text(encoding="utf-8"),
     ])
     digest = base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii")
@@ -120,10 +121,12 @@ def render_html(scenes):
     template = template.replace("<title>ThreadPlan</title>", "<title>ThreadPlan · 离线演示</title>")
     template = template.replace('<link rel="stylesheet" href="/style.css">',
                                 '<meta http-equiv="Content-Security-Policy" content="' + policy + '">\n'
-                                "<style>\n" + (WEB / "style.css").read_text(encoding="utf-8") + "</style>")
+                                "<style>\n" + (WEB / "style.css").read_text(encoding="utf-8") +
+                                "\n" + (WEB / "guide.css").read_text(encoding="utf-8") + "</style>")
     template = re.sub(r'^  <script src="/(?:calendar|app)\.js" defer></script>\n', "", template, flags=re.M)
     template = template.replace('href="/"', 'href="#"').replace('href="/?view=', 'href="#view=')
-    return template.replace("</body>", "<script>" + script + "</script>\n</body>")
+    guide = (WEB / "guide.html").read_text(encoding="utf-8")
+    return template.replace("</body>", guide + "\n<script>" + script + "</script>\n</body>")
 
 
 def build(output, *, builtin_only=False):

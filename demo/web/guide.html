@@ -1,0 +1,96 @@
+<template id="threadplan-guide-template">
+  <div class="tp-guide">
+    <header class="tpg-hero">
+      <h1>从群聊到日历</h1>
+      <p>同一段群聊，两件事分别处理。确认后才改日历。</p>
+    </header>
+    <div class="tpg-workspace">
+      <details class="tpg-panel tpg-source" data-guide="source" open>
+        <summary>
+          <span class="tpg-stack"><strong>发布协作群</strong><small>11 月 26 日 · 6 条示例消息</small></span>
+          <span class="tpg-chevron" aria-hidden="true"></span>
+        </summary>
+        <ol class="tpg-chat" aria-label="群聊记录">
+          <li data-message="1"><span class="tpg-person" aria-hidden="true">林</span><div><span class="tpg-speaker">林晨 <time>09:10</time></span><p>周五 14:00 的发布评审，会议室 A，先按原安排。</p></div></li>
+          <li data-message="2"><span class="tpg-person other" aria-hidden="true">陈</span><div><span class="tpg-speaker">陈嘉 <time>09:12</time></span><p>接口联调你也参加，周五能约吗？我还没定空档。</p></div></li>
+          <li data-message="3"><span class="tpg-person" aria-hidden="true">林</span><div><span class="tpg-speaker">林晨 <time>09:14</time></span><p>发布评审能改到 15:00 吗？</p></div></li>
+          <li data-message="4"><span class="tpg-person self" aria-hidden="true">我</span><div><span class="tpg-speaker">你 <time>09:16</time></span><p>15:00 有培训。评审 16:00 可以，还是半小时。</p></div></li>
+          <li data-message="5"><span class="tpg-person" aria-hidden="true">林</span><div><span class="tpg-speaker">林晨 <time>09:17</time></span><p>好，发布评审就定周五 16:00，会议室 A 不变。</p></div></li>
+          <li data-message="6"><span class="tpg-person other" aria-hidden="true">陈</span><div><span class="tpg-speaker">陈嘉 <time>09:19</time></span><p>联调先别约，时间确定了我再说。</p></div></li>
+        </ol>
+      </details>
+      <section class="tpg-panel tpg-decision" aria-labelledby="tpg-decision-title">
+        <h2 id="tpg-decision-title" tabindex="-1">日程判断</h2>
+        <div data-guide="intro">
+          <p class="tpg-muted">评审换过时间，联调也在讨论。哪一项能写入日历？</p>
+          <button class="primary" type="button" data-guide="analyze">查看判断</button>
+        </div>
+        <div data-guide="plan" hidden>
+          <div class="tpg-choices">
+            <article class="tpg-choice">
+              <header><h3>发布评审</h3><span class="tpg-pill" data-guide="verdict">建议改期</span></header>
+              <p class="tpg-diff"><span>14:00–14:30</span><span aria-hidden="true">→</span><strong>16:00–16:30</strong></p>
+              <p class="tpg-muted">会议室 A 和 30 分钟时长不变。</p>
+              <blockquote data-guide="review-quote"></blockquote>
+              <details class="tpg-context" data-guide="context">
+                <summary>为什么不是 15:00？</summary>
+                <ol data-guide="review-context"></ol>
+              </details>
+            </article>
+            <article class="tpg-choice tpg-wait">
+              <header><h3>接口联调</h3><span class="tpg-pill">时间未定 · 不创建</span></header>
+              <blockquote data-guide="sync-quote"></blockquote>
+            </article>
+          </div>
+          <button class="primary tpg-confirm" type="button" data-guide="confirm">确认改期</button>
+        </div>
+      </section>
+    </div>
+    <section class="tpg-panel tpg-result" data-guide="result" aria-labelledby="tpg-result-title">
+      <header>
+        <h2 id="tpg-result-title" tabindex="-1">日历结果</h2>
+        <span class="tpg-pill tpg-neutral" data-guide="result-state" role="status">尚未执行</span>
+      </header>
+      <div class="tpg-calendar">
+        <header>
+          <h3>11 月 27 日 · 周五</h3>
+          <div class="tpg-switch" data-guide="compare" role="group" aria-label="日历对照" hidden>
+            <button type="button" data-guide="before" aria-pressed="false">改期前</button>
+            <button type="button" data-guide="after" aria-pressed="true">改期后</button>
+          </div>
+        </header>
+        <ol class="tpg-agenda" data-guide="friday" aria-label="周五日程">
+          <li data-guide="review"><time data-guide="review-time">14:00–14:30</time><span class="tpg-stack"><strong>发布评审</strong><small>会议室 A</small></span><span class="tpg-pill" data-guide="changed" hidden>已改期</span></li>
+          <li data-guide="walk"><time>15:00–15:20</time><strong>验收走查</strong><span class="tpg-pill tpg-neutral" data-guide="unchanged" hidden>未改动</span></li>
+        </ol>
+        <section class="tpg-saturday" data-guide="saturday" aria-labelledby="tpg-saturday-title" hidden>
+          <h3 id="tpg-saturday-title">11 月 28 日 · 周六</h3>
+          <ol class="tpg-agenda"><li><time>10:00–10:30</time><span class="tpg-stack"><strong>样品交接</strong><small>访客中心 · 带签收单</small><small data-guide="reminder" hidden>09:30 提醒</small></span><span class="tpg-pill">已新增</span></li></ol>
+        </section>
+      </div>
+      <p class="tpg-receipt" data-guide="result-note">这是原日历，确认后会在这里更新。</p>
+      <div data-guide="applied" hidden>
+        <div class="tpg-next">
+          <details class="tpg-extra" data-guide="extra">
+            <summary>试试单条记事与补提醒</summary>
+            <div class="tpg-extra-body">
+              <blockquote>周六 10:00–10:30 在访客中心交接样品，带签收单。</blockquote>
+              <button class="secondary" type="button" data-guide="record">记下交接</button>
+              <div data-guide="followup" hidden>
+                <blockquote>给刚才那条加个提前 30 分钟的提醒。</blockquote>
+                <button class="secondary" type="button" data-guide="preview">预览提醒</button>
+                <div data-guide="reminder-plan" hidden>
+                  <p class="tpg-muted">只新增 09:30 的提醒，不改变原日程。</p>
+                  <button class="secondary" type="button" data-guide="apply">确认补充</button>
+                </div>
+              </div>
+              <p class="tpg-muted" data-guide="extra-status" role="status"></p>
+            </div>
+          </details>
+          <button class="primary" type="button" data-guide="explore">查看其他案例 <span aria-hidden="true">→</span></button>
+        </div>
+      </div>
+    </section>
+    <footer class="tpg-footer"><span>导览使用预设示例，不连接真实日历。</span><button class="text-button" type="button" data-guide="restart" hidden>重新开始</button></footer>
+  </div>
+</template>
